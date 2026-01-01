@@ -87,7 +87,7 @@ async def get_comments():
     # to_pandas() returns a DataFrame, then we convert to dict
     df = table.to_pandas()
     # Sort by date descending (optional but usually good for comments)
-    # df = df.sort_values(by="date", ascending=False) 
+    df = df.sort_values(by="date", ascending=False) 
     return df.to_dict(orient="records")
 
 @app.post("/comments", response_model=Comment)
