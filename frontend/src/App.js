@@ -21,21 +21,48 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import { red } from '@mui/material/colors';
 import './App.css';
 
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import Select, { SelectChangeEvent } from '@mui/material/Select';
+
 function App() {
+  //dropdown state
+
+  
+
+  const [sort, setSort] = React.useState(localStorage.getItem('sort') || 'date-down');
+
+  // Report wins to localStorage
+    useEffect(() => {
+        localStorage.setItem('sort', sort);
+    }, [sort]);
+
+  const handleChange = (event) => {
+    setSort(event.target.value);
+    //need to do the call to fetch the commends again
+    fetchComments(event.target.value);
+    localStorage.setItem('sort', event.target.value);
+  };
+
+
+
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
 
-  const fetchComments = () => {
-    fetch('http://localhost:8000/comments')
+  const fetchComments = (state) => {
+    console.log("current state: ", state);
+    console.log("current state localstorage: ", localStorage.getItem("sort"));
+    fetch('http://localhost:8000/comments/'+state)
       .then(response => response.json())
       .then(data => setComments(data))
       .catch(error => console.error('Error fetching comments:', error));
   };
 
   useEffect(() => {
-    fetchComments();
+    fetchComments(localStorage.getItem("sort"));
   }, []);
 
   const handleAddComment = () => {
@@ -112,6 +139,22 @@ function App() {
           Post
         </Button>
       </Box>
+
+      <FormControl fullWidth>
+        <InputLabel id="demo-simple-select-label">Sort</InputLabel>
+        <Select
+          labelId="demo-simple-select-label"
+          id="demo-simple-select"
+          value={sort}
+          label="Sort"
+          onChange={handleChange}
+        >
+          <MenuItem value={'date-up'}>Date (Ascending)</MenuItem>
+          <MenuItem value={'date-down'}>Date (Decending)</MenuItem>
+          <MenuItem value={'id-up'}>id (Ascending)</MenuItem>
+          <MenuItem value={'id-down'}>id (Descending)</MenuItem>
+        </Select>
+      </FormControl>
 
       <Stack spacing={3}>
         {comments.map((comment) => (

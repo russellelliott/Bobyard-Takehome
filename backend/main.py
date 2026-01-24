@@ -80,14 +80,44 @@ def init_db():
 async def startup_event():
     init_db()
 
-@app.get("/comments", response_model=List[Comment])
-async def get_comments():
+@app.get("/comments/{state}", response_model=List[Comment])
+async def get_comments(state):
+    print("backend state: ", state)
     table = db.open_table(TABLE_NAME)
     # LanceDB returns pyarrow table or pandas dataframe. 
     # to_pandas() returns a DataFrame, then we convert to dict
     df = table.to_pandas()
     # Sort by date descending (optional but usually good for comments)
+    
+    #do a given sort depending on the state
+    
+    #       <MenuItem value={'date-up'}>Date (Ascending)</MenuItem>
+    #       <MenuItem value={'date-down'}>Date (Decending)</MenuItem>
+    #       <MenuItem value={'id-up'}>id (Ascending)</MenuItem>
+    #       <MenuItem value={'id-down'}>id (Descending)</MenuItem>
+          
+          
+    if state == 'date-up':
+        df = df.sort_values(by="date", ascending=True) # date up
+    elif state == 'date-down':
+        df = df.sort_values(by="date", ascending=False) # date descending
+    elif state == 'id-up':
+        df = df.sort_values(by="id", ascending=True) # date descending
+    elif state == 'id-down':
+        df = df.sort_values(by="id", ascending=False) # date descending
+        
+        
+    # df = df.sort_values(by="date", ascending=False) # date descending
+    
+    '''
+    different logic
+    
+    df = df.sort_values(by="date", ascending=True) 
+    
     df = df.sort_values(by="date", ascending=False) 
+    
+    df = df.sort_values(by="date", ascending=True) 
+    '''
     return df.to_dict(orient="records")
 
 @app.post("/comments", response_model=Comment)
