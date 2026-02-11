@@ -1,7 +1,12 @@
+"""
+Main application module for the Comments API.
+This module sets up the FastAPI application, database connection, and API endpoints.
+"""
+
 import json
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 import uuid
 
 import lancedb
@@ -12,7 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# CORS configuration
+# --- CORS Configuration ---
+# Allow requests from the frontend application
 origins = [
     "http://localhost:3000",
     "http://localhost:8000",
@@ -26,7 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database setup
+# --- Database Setup ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_URI = os.path.join(BASE_DIR, "data/lancedb")
 os.makedirs(DB_URI, exist_ok=True)
@@ -34,17 +40,25 @@ db = lancedb.connect(DB_URI)
 
 TABLE_NAME = "comments"
 
-# Pydantic models
+# --- Pydantic Models ---
+
 class CommentBase(BaseModel):
+    """Base model for comment data."""
     text: str
 
 class CommentCreate(CommentBase):
+    """Model for creating a new comment."""
     pass
 
 class CommentUpdate(BaseModel):
+    """Model for updating an existing comment."""
     text: str
 
 class Comment(BaseModel):
+    """
+    Model representing a full comment object as stored in the database
+    and returned to the client.
+    """
     id: str
     author: str
     text: str
@@ -52,8 +66,16 @@ class Comment(BaseModel):
     likes: int
     image: str
 
-# Initialize database
+# --- Database Initialization ---
+
 def init_db():
+    """
+    Initialize the LanceDB database.
+    
+    Checks if the 'comments' table exists. 
+    If not, it tries to load initial data from 'comments.json'.
+    If the JSON file is missing, it creates an empty table with the correct schema.
+    """
     if TABLE_NAME not in db.table_names():
         try:
             json_path = os.path.join(BASE_DIR, "comments.json")
@@ -68,8 +90,7 @@ def init_db():
         except FileNotFoundError:
             print("comments.json not found. Creating empty table.")
             # Create empty table with schema
-            schema = Comment.model_json_schema()
-            # This is a bit tricky with LanceDB without data, let's try creating with a dummy empty dataframe with columns
+            # This requires creating a dummy empty dataframe with the correct columns
             df = pd.DataFrame(columns=["id", "author", "text", "date", "likes", "image"])
             db.create_table(TABLE_NAME, data=df)
     else:
@@ -78,50 +99,53 @@ def init_db():
 # Run initialization on startup
 @app.on_event("startup")
 async def startup_event():
+    """Event handler to initialize the database when the application starts."""
     init_db()
+
+# --- API Endpoints ---
 
 @app.get("/comments/{state}", response_model=List[Comment])
 async def get_comments(state):
+    """
+    Retrieve a list of comments sorted based on the provided state.
+
+    Args:
+        state (str): The sorting criteria. 
+                     Options: 'date-up', 'date-down', 'id-up', 'id-down'.
+
+    Returns:
+        List[dict]: A list of comments sorted according to the criteria.
+    """
     print("backend state: ", state)
     table = db.open_table(TABLE_NAME)
-    # LanceDB returns pyarrow table or pandas dataframe. 
-    # to_pandas() returns a DataFrame, then we convert to dict
+    
+    # LanceDB returns a pyarrow table or pandas dataframe. 
+    # to_pandas() returns a DataFrame, which we then sort and convert to a dict.
     df = table.to_pandas()
-    # Sort by date descending (optional but usually good for comments)
     
-    #do a given sort depending on the state
-    
-    #       <MenuItem value={'date-up'}>Date (Ascending)</MenuItem>
-    #       <MenuItem value={'date-down'}>Date (Decending)</MenuItem>
-    #       <MenuItem value={'id-up'}>id (Ascending)</MenuItem>
-    #       <MenuItem value={'id-down'}>id (Descending)</MenuItem>
-          
-          
+    # Sort the DataFrame based on the 'state' parameter
     if state == 'date-up':
-        df = df.sort_values(by="date", ascending=True) # date up
+        df = df.sort_values(by="date", ascending=True)
     elif state == 'date-down':
-        df = df.sort_values(by="date", ascending=False) # date descending
+        df = df.sort_values(by="date", ascending=False)
     elif state == 'id-up':
-        df = df.sort_values(by="id", ascending=True) # date descending
+        df = df.sort_values(by="id", ascending=True)
     elif state == 'id-down':
-        df = df.sort_values(by="id", ascending=False) # date descending
+        df = df.sort_values(by="id", ascending=False)
         
-        
-    # df = df.sort_values(by="date", ascending=False) # date descending
-    
-    '''
-    different logic
-    
-    df = df.sort_values(by="date", ascending=True) 
-    
-    df = df.sort_values(by="date", ascending=False) 
-    
-    df = df.sort_values(by="date", ascending=True) 
-    '''
     return df.to_dict(orient="records")
 
 @app.post("/comments", response_model=Comment)
 async def create_comment(comment: CommentCreate):
+    """
+    Create a new comment.
+
+    Args:
+        comment (CommentCreate): The comment data containing the text.
+
+    Returns:
+        dict: The newly created comment object including generated fields.
+    """
     table = db.open_table(TABLE_NAME)
     
     new_comment = {
@@ -134,19 +158,28 @@ async def create_comment(comment: CommentCreate):
     }
     
     # Add to database
-    # LanceDB expects a list of dicts or a dataframe
     table.add([new_comment])
     
     return new_comment
 
 @app.put("/comments/{comment_id}", response_model=Comment)
 async def update_comment(comment_id: str, comment_update: CommentUpdate):
+    """
+    Update an existing comment's text.
+
+    Args:
+        comment_id (str): The ID of the comment to update.
+        comment_update (CommentUpdate): The new text for the comment.
+
+    Returns:
+        dict: The updated comment object.
+
+    Raises:
+        HTTPException: If the comment is not found.
+    """
     table = db.open_table(TABLE_NAME)
     
-    # LanceDB update is a bit different. It supports SQL-like updates or deletion and re-insertion.
-    # For simplicity and since we are using LanceDB, let's check if it exists first.
-    # We can use a filter query.
-    
+    # Check if the comment exists using a filter query
     results = table.search().where(f"id = '{comment_id}'").limit(1).to_pandas()
     
     if results.empty:
@@ -154,25 +187,35 @@ async def update_comment(comment_id: str, comment_update: CommentUpdate):
     
     existing_comment = results.iloc[0].to_dict()
     
-    # Update fields
+    # Update fields in the object specifically for the return value
     existing_comment["text"] = comment_update.text
     
-    # LanceDB currently supports updates via `update` method in newer versions or delete+insert.
-    # Let's try the `update` method if available, otherwise delete and insert.
-    # Checking documentation (simulated): table.update(where=..., values=...)
-    
+    # Perform the update in the database
     try:
+        # Try to use the update method if available
         table.update(where=f"id = '{comment_id}'", values={"text": comment_update.text})
         return existing_comment
     except Exception as e:
-        # Fallback if update is not supported in the installed version or fails
-        print(f"Update failed: {e}. Trying delete and insert.")
+        # Fallback for older versions or if update fails: delete and re-insert
+        print(f"Update failed using .update(): {e}. Falling back to delete and insert.")
         table.delete(f"id = '{comment_id}'")
         table.add([existing_comment])
         return existing_comment
 
 @app.delete("/comments/{comment_id}")
 async def delete_comment(comment_id: str):
+    """
+    Delete a comment by its ID.
+
+    Args:
+        comment_id (str): The ID of the comment to delete.
+
+    Returns:
+        dict: A confirmation message.
+
+    Raises:
+        HTTPException: If the comment is not found.
+    """
     table = db.open_table(TABLE_NAME)
     
     # Check if exists

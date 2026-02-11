@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Container, 
-  Typography, 
-  Card, 
-  CardContent, 
-  CardMedia, 
-  CardHeader, 
-  Avatar, 
+import {
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  CardMedia,
+  CardHeader,
+  Avatar,
   Box,
   Stack,
   TextField,
@@ -24,47 +24,74 @@ import './App.css';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
-import Select, { SelectChangeEvent } from '@mui/material/Select';
+import Select from '@mui/material/Select';
 
+/**
+ * App Component
+ * 
+ * Main application component that handles displaying, adding, editing, 
+ * and deleting comments. It interacts with the backend API to persist data.
+ */
 function App() {
-  //dropdown state
-
+  // --- State Management ---
   
-
+  // State for sorting criteria (persisted in localStorage)
   const [sort, setSort] = React.useState(localStorage.getItem('sort') || 'date-down');
 
-  // Report wins to localStorage
-    useEffect(() => {
-        localStorage.setItem('sort', sort);
-    }, [sort]);
+  // State for storing the list of comments fetched from the backend
+  const [comments, setComments] = useState([]);
+  
+  // State for the new comment input field
+  const [newComment, setNewComment] = useState('');
+  
+  // State to track which comment is currently being edited
+  const [editingId, setEditingId] = useState(null);
+  
+  // State to hold the text of the comment being edited
+  const [editText, setEditText] = useState('');
 
+  // --- Effects ---
+
+  // Effect to perist the sort preference to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('sort', sort);
+  }, [sort]);
+
+  // Effect to fetch initial comments on component mount
+  useEffect(() => {
+    fetchComments(localStorage.getItem("sort"));
+  }, []);
+
+  // --- Handlers ---
+
+  /**
+   * Handles changes to the sort dropdown.
+   * Updates state, localStorage, and refetches comments with the new sort order.
+   * @param {object} event - The change event from the Select component
+   */
   const handleChange = (event) => {
     setSort(event.target.value);
-    //need to do the call to fetch the commends again
     fetchComments(event.target.value);
     localStorage.setItem('sort', event.target.value);
   };
 
-
-
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
-  const [editingId, setEditingId] = useState(null);
-  const [editText, setEditText] = useState('');
-
+  /**
+   * Fetches comments from the backend based on the current sort order.
+   * @param {string} state - The sort order identifier (e.g., 'date-up')
+   */
   const fetchComments = (state) => {
     console.log("current state: ", state);
     console.log("current state localstorage: ", localStorage.getItem("sort"));
-    fetch('http://localhost:8000/comments/'+state)
+    fetch('http://localhost:8000/comments/' + state)
       .then(response => response.json())
       .then(data => setComments(data))
       .catch(error => console.error('Error fetching comments:', error));
   };
 
-  useEffect(() => {
-    fetchComments(localStorage.getItem("sort"));
-  }, []);
-
+  /**
+   * Submits a new comment to the backend.
+   * Clears the input and refreshes the list upon success.
+   */
   const handleAddComment = () => {
     if (!newComment.trim()) return;
 
@@ -78,29 +105,44 @@ function App() {
       .then(response => response.json())
       .then(() => {
         setNewComment('');
-        fetchComments();
+        fetchComments(sort); // Ensure we fetch with current sort
       })
       .catch(error => console.error('Error adding comment:', error));
   };
 
+  /**
+   * Deletes a comment by ID.
+   * @param {string} id - The unique identifier of the comment to delete
+   */
   const handleDeleteComment = (id) => {
     fetch(`http://localhost:8000/comments/${id}`, {
       method: 'DELETE',
     })
-      .then(() => fetchComments())
+      .then(() => fetchComments(sort))
       .catch(error => console.error('Error deleting comment:', error));
   };
 
+  /**
+   * Initiates the edit mode for a specific comment.
+   * @param {object} comment - The comment object to be edited
+   */
   const handleStartEdit = (comment) => {
     setEditingId(comment.id);
     setEditText(comment.text);
   };
 
+  /**
+   * Cancels the current edit operation and resets edit state.
+   */
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditText('');
   };
 
+  /**
+   * Saves the edited text for a comment to the backend.
+   * @param {string} id - The unique identifier of the comment being updated
+   */
   const handleSaveEdit = (id) => {
     fetch(`http://localhost:8000/comments/${id}`, {
       method: 'PUT',
@@ -111,7 +153,7 @@ function App() {
     })
       .then(() => {
         setEditingId(null);
-        fetchComments();
+        fetchComments(sort);
       })
       .catch(error => console.error('Error updating comment:', error));
   };
@@ -122,6 +164,7 @@ function App() {
         Community Comments
       </Typography>
 
+      {/* Input Section */}
       <Box sx={{ mb: 4, display: 'flex', gap: 2 }}>
         <TextField
           fullWidth
@@ -130,8 +173,8 @@ function App() {
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
         />
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           size="large"
           onClick={handleAddComment}
           disabled={!newComment.trim()}
@@ -140,6 +183,7 @@ function App() {
         </Button>
       </Box>
 
+      {/* Sort Controls */}
       <FormControl fullWidth>
         <InputLabel id="demo-simple-select-label">Sort</InputLabel>
         <Select
@@ -150,13 +194,14 @@ function App() {
           onChange={handleChange}
         >
           <MenuItem value={'date-up'}>Date (Ascending)</MenuItem>
-          <MenuItem value={'date-down'}>Date (Decending)</MenuItem>
-          <MenuItem value={'id-up'}>id (Ascending)</MenuItem>
-          <MenuItem value={'id-down'}>id (Descending)</MenuItem>
+          <MenuItem value={'date-down'}>Date (Descending)</MenuItem>
+          <MenuItem value={'id-up'}>ID (Ascending)</MenuItem>
+          <MenuItem value={'id-down'}>ID (Descending)</MenuItem>
         </Select>
       </FormControl>
 
-      <Stack spacing={3}>
+      {/* Comment List */}
+      <Stack spacing={3} sx={{ mt: 4 }}>
         {comments.map((comment) => (
           <Card key={comment.id} sx={{ width: '100%' }}>
             <CardHeader
@@ -196,10 +241,10 @@ function App() {
                 component="img"
                 image={comment.image}
                 alt="Comment attachment"
-                sx={{ 
-                  maxHeight: 400, 
+                sx={{
+                  maxHeight: 400,
                   objectFit: 'contain',
-                  bgcolor: 'background.default' 
+                  bgcolor: 'background.default'
                 }}
               />
             )}
@@ -217,7 +262,7 @@ function App() {
                   {comment.text}
                 </Typography>
               )}
-              
+
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
                 <FavoriteIcon color="error" fontSize="small" />
                 <Typography variant="body2" color="text.secondary">
