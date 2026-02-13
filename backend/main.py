@@ -60,6 +60,7 @@ class Comment(BaseModel):
     and returned to the client.
     """
     id: str
+    parent: str
     author: str
     text: str
     date: str
@@ -125,49 +126,15 @@ async def get_comments(state):
     
     
 
-    
-    df = df.sort_values(by="parent", ascending=True)
-    
-    df2 = df
-    
-    #make some kind of nested json
-    #first get all the ones with no parents
-    #then all the ones whos parents are in aforementioned list
-    
-    roots = df.loc[df['parent'] == ""]
-    # df = roots
-    
-    # with open('comments.json', 'r') as f:
-    #     data = json.load(f)
-    # df = pd.DataFrame(data)
-    
-    print(roots)
-    
-    root_ids = roots['id'].tolist()
-    print("root ids: ", root_ids)
-    
-    #go through each of the IDs, add comments of that parent
-    for id in root_ids:
-        children = df.loc[df['parent'] == id]
-        print("children", children)
-        child_list = children.to_list()
-        #add then as a field to the original comment
-        df2.loc[df.id == 2, "child_comment"] = child_list
-    
-    print(df2)
-    
-    # for i in df:
-    #     print(i.id)
-    
-    # # Sort the DataFrame based on the 'state' parameter
-    # if state == 'date-up':
-    #     df = df.sort_values(by="date", ascending=True)
-    # elif state == 'date-down':
-    #     df = df.sort_values(by="date", ascending=False)
-    # elif state == 'id-up':
-    #     df = df.sort_values(by="id", ascending=True)
-    # elif state == 'id-down':
-    #     df = df.sort_values(by="id", ascending=False)
+    # Sort the DataFrame based on the 'state' parameter
+    if state == 'date-up':
+        df = df.sort_values(by="date", ascending=True)
+    elif state == 'date-down':
+        df = df.sort_values(by="date", ascending=False)
+    elif state == 'id-up':
+        df = df.sort_values(by="id", ascending=True)
+    elif state == 'id-down':
+        df = df.sort_values(by="id", ascending=False)
         
     return df.to_dict(orient="records")
 
@@ -186,6 +153,7 @@ async def create_comment(comment: CommentCreate):
     
     new_comment = {
         "id": str(uuid.uuid4()),
+        "parent": "",
         "author": "Admin",
         "text": comment.text,
         "date": datetime.utcnow().isoformat() + "Z",

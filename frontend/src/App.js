@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -8,7 +8,6 @@ import {
   CardHeader,
   Avatar,
   Box,
-  Stack,
   TextField,
   Button,
   IconButton
@@ -26,94 +25,181 @@ import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import Select from '@mui/material/Select';
 
-/**
- * App Component
- * 
- * Main application component that handles displaying, adding, editing, 
- * and deleting comments. It interacts with the backend API to persist data.
- */
+// Helper to convert flat list to tree
+const buildCommentTree = (flatComments) => {
+  const map = {};
+  const roots = [];
+
+  // Initialize map with all comments and empty children arrays
+  flatComments.forEach(comment => {
+    map[comment.id] = { ...comment, children: [] };
+  });
+
+  // Link children to parents
+  flatComments.forEach(comment => {
+    if (comment.parent && map[comment.parent]) {
+      map[comment.parent].children.push(map[comment.id]);
+    } else {
+      roots.push(map[comment.id]);
+    }
+  });
+
+  return roots;
+};
+
+// Recursive Comment Item Component
+const CommentItem = ({ 
+  comment, 
+  depth = 0, 
+  editingId, 
+  editText, 
+  onEdit, 
+  onDelete, 
+  onSave, 
+  onCancel, 
+  setEditText 
+}) => {
+  return (
+    <Box sx={{ ml: depth > 0 ? 4 : 0, mt: 2, width: '100%' }}>
+      <Card sx={{ width: '100%', borderLeft: depth > 0 ? `4px solid ${red[100]}` : 'none' }}>
+        <CardHeader
+          avatar={
+            <Avatar sx={{ bgcolor: red[500] }} aria-label="recipe">
+              {comment.author ? comment.author[0].toUpperCase() : '?'}
+            </Avatar>
+          }
+          action={
+            <Box>
+              {editingId === comment.id ? (
+                <>
+                  <IconButton onClick={() => onSave(comment.id)} color="primary">
+                    <SaveIcon />
+                  </IconButton>
+                  <IconButton onClick={onCancel} color="default">
+                    <CancelIcon />
+                  </IconButton>
+                </>
+              ) : (
+                <>
+                  <IconButton onClick={() => onEdit(comment)} color="primary">
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton onClick={() => onDelete(comment.id)} color="error">
+                    <DeleteIcon />
+                  </IconButton>
+                </>
+              )}
+            </Box>
+          }
+          title={comment.author}
+          subheader={comment.date ? new Date(comment.date).toLocaleString() : ''}
+        />
+        {comment.image && (
+          <CardMedia
+            component="img"
+            image={comment.image}
+            alt="Comment attachment"
+            sx={{
+              maxHeight: 400,
+              objectFit: 'contain',
+              bgcolor: 'background.default'
+            }}
+          />
+        )}
+        <CardContent>
+          {editingId === comment.id ? (
+            <TextField
+              fullWidth
+              multiline
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              variant="outlined"
+            />
+          ) : (
+            <Typography variant="body1" color="text.primary" sx={{ mb: 2 }}>
+              {comment.text}
+            </Typography>
+          )}
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+            <FavoriteIcon color="error" fontSize="small" />
+            <Typography variant="body2" color="text.secondary">
+              {comment.likes} Likes
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
+      
+      {/* Recursive rendering of children */}
+      {comment.children && comment.children.length > 0 && (
+        <Box>
+          {comment.children.map(child => (
+            <CommentItem 
+              key={child.id} 
+              comment={child} 
+              depth={depth + 1}
+              editingId={editingId}
+              editText={editText}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onSave={onSave}
+              onCancel={onCancel}
+              setEditText={setEditText}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 function App() {
   // --- State Management ---
-  
-  // State for sorting criteria (persisted in localStorage)
   const [sort, setSort] = React.useState(localStorage.getItem('sort') || 'date-down');
-
-  // State for storing the list of comments fetched from the backend
   const [comments, setComments] = useState([]);
-  
-  // State for the new comment input field
   const [newComment, setNewComment] = useState('');
-  
-  // State to track which comment is currently being edited
   const [editingId, setEditingId] = useState(null);
-  
-  // State to hold the text of the comment being edited
   const [editText, setEditText] = useState('');
 
   // --- Effects ---
-
-  // Effect to perist the sort preference to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('sort', sort);
   }, [sort]);
 
-  // Effect to fetch initial comments on component mount
   useEffect(() => {
-    fetchComments(localStorage.getItem("sort"));
+    fetchComments(localStorage.getItem("sort") || 'date-down');
   }, []);
 
   // --- Handlers ---
-
-  /**
-   * Handles changes to the sort dropdown.
-   * Updates state, localStorage, and refetches comments with the new sort order.
-   * @param {object} event - The change event from the Select component
-   */
   const handleChange = (event) => {
     setSort(event.target.value);
     fetchComments(event.target.value);
     localStorage.setItem('sort', event.target.value);
   };
 
-  /**
-   * Fetches comments from the backend based on the current sort order.
-   * @param {string} state - The sort order identifier (e.g., 'date-up')
-   */
   const fetchComments = (state) => {
-    console.log("current state: ", state);
-    console.log("current state localstorage: ", localStorage.getItem("sort"));
     fetch('http://localhost:8000/comments/' + state)
       .then(response => response.json())
       .then(data => setComments(data))
       .catch(error => console.error('Error fetching comments:', error));
   };
 
-  /**
-   * Submits a new comment to the backend.
-   * Clears the input and refreshes the list upon success.
-   */
   const handleAddComment = () => {
     if (!newComment.trim()) return;
 
     fetch('http://localhost:8000/comments', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: newComment }),
     })
       .then(response => response.json())
       .then(() => {
         setNewComment('');
-        fetchComments(sort); // Ensure we fetch with current sort
+        fetchComments(sort);
       })
       .catch(error => console.error('Error adding comment:', error));
   };
 
-  /**
-   * Deletes a comment by ID.
-   * @param {string} id - The unique identifier of the comment to delete
-   */
   const handleDeleteComment = (id) => {
     fetch(`http://localhost:8000/comments/${id}`, {
       method: 'DELETE',
@@ -122,33 +208,20 @@ function App() {
       .catch(error => console.error('Error deleting comment:', error));
   };
 
-  /**
-   * Initiates the edit mode for a specific comment.
-   * @param {object} comment - The comment object to be edited
-   */
   const handleStartEdit = (comment) => {
     setEditingId(comment.id);
     setEditText(comment.text);
   };
 
-  /**
-   * Cancels the current edit operation and resets edit state.
-   */
   const handleCancelEdit = () => {
     setEditingId(null);
     setEditText('');
   };
 
-  /**
-   * Saves the edited text for a comment to the backend.
-   * @param {string} id - The unique identifier of the comment being updated
-   */
   const handleSaveEdit = (id) => {
     fetch(`http://localhost:8000/comments/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: editText }),
     })
       .then(() => {
@@ -157,6 +230,9 @@ function App() {
       })
       .catch(error => console.error('Error updating comment:', error));
   };
+
+  // Build the tree dynamically when comments change
+  const commentTree = useMemo(() => buildCommentTree(comments), [comments]);
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
@@ -200,79 +276,22 @@ function App() {
         </Select>
       </FormControl>
 
-      {/* Comment List */}
-      <Stack spacing={3} sx={{ mt: 4 }}>
-        {comments.map((comment) => (
-          <Card key={comment.id} sx={{ width: '100%' }}>
-            <CardHeader
-              avatar={
-                <Avatar sx={{ bgcolor: red[500] }} aria-label="recipe">
-                  {comment.author ? comment.author[0].toUpperCase() : '?'}
-                </Avatar>
-              }
-              action={
-                <Box>
-                  {editingId === comment.id ? (
-                    <>
-                      <IconButton onClick={() => handleSaveEdit(comment.id)} color="primary">
-                        <SaveIcon />
-                      </IconButton>
-                      <IconButton onClick={handleCancelEdit} color="default">
-                        <CancelIcon />
-                      </IconButton>
-                    </>
-                  ) : (
-                    <>
-                      <IconButton onClick={() => handleStartEdit(comment)} color="primary">
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton onClick={() => handleDeleteComment(comment.id)} color="error">
-                        <DeleteIcon />
-                      </IconButton>
-                    </>
-                  )}
-                </Box>
-              }
-              title={comment.author}
-              subheader={comment.date ? new Date(comment.date).toLocaleString() : ''}
-            />
-            {comment.image && (
-              <CardMedia
-                component="img"
-                image={comment.image}
-                alt="Comment attachment"
-                sx={{
-                  maxHeight: 400,
-                  objectFit: 'contain',
-                  bgcolor: 'background.default'
-                }}
-              />
-            )}
-            <CardContent>
-              {editingId === comment.id ? (
-                <TextField
-                  fullWidth
-                  multiline
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  variant="outlined"
-                />
-              ) : (
-                <Typography variant="body1" color="text.primary" sx={{ mb: 2 }}>
-                  {comment.text}
-                </Typography>
-              )}
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                <FavoriteIcon color="error" fontSize="small" />
-                <Typography variant="body2" color="text.secondary">
-                  {comment.likes} Likes
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
+      {/* Comment List Tree */}
+      <Box sx={{ mt: 4 }}>
+        {commentTree.map((comment) => (
+          <CommentItem 
+            key={comment.id}
+            comment={comment}
+            editingId={editingId}
+            editText={editText}
+            onEdit={handleStartEdit}
+            onDelete={handleDeleteComment}
+            onSave={handleSaveEdit}
+            onCancel={handleCancelEdit}
+            setEditText={setEditText}
+          />
         ))}
-      </Stack>
+      </Box>
     </Container>
   );
 }
